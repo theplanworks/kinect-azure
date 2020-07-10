@@ -15,11 +15,12 @@
     "node": ">= 10.6.0"
   },
   "scripts": {
-    "install": "node ./scripts/install.js && node-gyp rebuild",
+    "install": "node ./scripts/clean.js",
+    "install-windows": "node ./scripts/install.js && node-gyp rebuild",
     "clean": "node ./scripts/clean.js",
     "build": "npm i && cd ./examples/electron && npm start",
     "start": "cd ./examples/electron && npm start",
-    "reinstall": "npm run clean && npm run install",
+    "reinstall": "npm run clean && npm run install-windows",
     "prepublishOnly": "rimraf ./examples/**/node_modules"
   },
   "gypfile": true,
