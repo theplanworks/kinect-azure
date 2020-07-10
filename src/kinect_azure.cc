@@ -7,6 +7,7 @@
 #include <malloc.h>
 #include <k4a/k4a.h>
 #include <k4arecord/playback.h>
+#include <k4arecord/record.h>
 #ifdef KINECT_AZURE_ENABLE_BODY_TRACKING
   #include <k4abt.h>
 #endif // KINECT_AZURE_ENABLE_BODY_TRACKING
@@ -38,6 +39,12 @@ bool is_playing = false;
 bool is_paused = false;
 bool is_seeking = false;
 double colorTimestamp = 0;
+
+// thePLAN
+bool is_recording = false;
+bool queue_recording_stop = false;
+const char *recording_filename;
+k4a_record_t recording;
 
 k4a_playback_t playback_handle = NULL;
 k4a_record_configuration_t playback_config;
@@ -1007,6 +1014,26 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
         depth_to_color_image = NULL;
       }
 
+      // thePLAN
+      // End recording
+      if (queue_recording_stop)
+      {
+        is_recording = false;
+        queue_recording_stop = false;
+        k4a_record_flush(recording);
+        k4a_record_close(recording);
+        recording = NULL;
+      }
+      else if (is_recording) {
+        if (recording == NULL) {
+          k4a_record_create(recording_filename, g_device, g_deviceConfig, &recording);
+          if (g_customDeviceConfig.include_imu_sample) {
+            k4a_record_add_imu_track(recording);
+          }
+          k4a_record_write_header(recording);
+        }
+        k4a_record_write_capture(recording, sensor_capture);
+      }
       k4a_capture_release(sensor_capture);
      
       if (!is_listening)
@@ -1073,6 +1100,9 @@ class WaitForTheadJoinWorker : public Napi::AsyncWorker {
 
 Napi::Value MethodStopListening(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
+  if (is_recording) {
+    queue_recording_stop = true;
+  }
   if (!is_listening) {
     Napi::TypeError::New(env, "Kinect was not listening")
         .ThrowAsJavaScriptException();
@@ -1084,6 +1114,29 @@ Napi::Value MethodStopListening(const Napi::CallbackInfo& info) {
   WaitForTheadJoinWorker* wk = new WaitForTheadJoinWorker(cb);
   wk->Queue();
   return info.Env().Undefined();
+}
+
+// thePLAN
+Napi::Value MethodStartRecording(const Napi::CallbackInfo& info) {
+  // Set recording to true
+  Napi::Env env = info.Env();
+  Napi::String js_path = info[0].As<Napi::String>();
+  recording_filename = js_path.Utf8Value().c_str();
+  is_recording = true;
+  queue_recording_stop = false;
+  // Napi::TypeError::New(env, "********* RECORDING!!!")
+        // .ThrowAsJavaScriptException();
+  return Napi::Boolean::New(env, true);
+}
+
+// thePLAN
+Napi::Value MethodStopRecording(const Napi::CallbackInfo& info) {
+  // Set recording to false
+  Napi::Env env = info.Env();
+  if (is_recording) {
+    queue_recording_stop = true;
+  }
+  return Napi::Boolean::New(env, true);
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -1108,6 +1161,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set(Napi::String::New(env, "setColorControl"), Napi::Function::New(env, MethodSetColorControl));
   exports.Set(Napi::String::New(env, "startListening"), Napi::Function::New(env, MethodStartListening));
   exports.Set(Napi::String::New(env, "stopListening"), Napi::Function::New(env, MethodStopListening));
+  // thePLAN
+  exports.Set(Napi::String::New(env, "startRecording"), Napi::Function::New(env, MethodStartRecording));
+  exports.Set(Napi::String::New(env, "stopRecording"), Napi::Function::New(env, MethodStopRecording));
   return exports;
 }
 
