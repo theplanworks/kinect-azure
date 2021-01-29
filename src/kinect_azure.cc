@@ -139,29 +139,31 @@ Napi::Value MethodInit(const Napi::CallbackInfo &info)
 
 Napi::Value MethodSetDebug(const Napi::CallbackInfo &info)
 {
+    Napi::Env env = info.Env();
+
     if (info.Length() < 1)
     {
-        throw TypeError::New(env, "Expected one arguments");
+        throw Napi::TypeError::New(env, "Expected one arguments");
     }
     else if (!info[0].IsFunction())
     {
-        throw TypeError::New(env, "Expected first arg to be function");
+        throw Napi::TypeError::New(env, "Expected first arg to be function");
     }
 
     // Create a ThreadSafeFunction
-    dtsfn = ThreadSafeFunction::New(
+    dtsfn = Napi::ThreadSafeFunction::New(
         env,
-        info[0].As<Function>(), // JavaScript function called asynchronously
-        "Debug Callback",       // Name
-        0,                      // Unlimited queue
-        1,                      // Only one thread will use this initially
-        [](Napi::Env) {         // Finalizer used to clean threads up
+        info[0].As<Napi::Function>(), // JavaScript function called asynchronously
+        "Debug Callback",             // Name
+        0,                            // Unlimited queue
+        1,                            // Only one thread will use this initially
+        [](Napi::Env) {               // Finalizer used to clean threads up
             debugNativeThread.join();
         });
 
     // Create a native thread
     debugNativeThread = std::thread([] {
-        auto callback = [](Napi::Env env, Function jsCallback, string value) {
+        auto callback = [](Napi::Env env, Napi::Function jsCallback, string value) {
             // Transform native data into JS data, passing it to the provided
             // `jsCallback` -- the TSFN's JavaScript function.
             jsCallback.Call({Napi::String::New(env, value)});
