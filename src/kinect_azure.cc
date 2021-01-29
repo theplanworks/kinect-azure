@@ -162,7 +162,7 @@ Napi::Value MethodSetDebug(const Napi::CallbackInfo &info)
         });
 
     // Create a native thread
-    debugNativeThread = std::thread([] {
+    debugNativeThread = std::thread([debugStr] {
         auto callback = [](Napi::Env env, Napi::Function jsCallback, string value) {
             // Transform native data into JS data, passing it to the provided
             // `jsCallback` -- the TSFN's JavaScript function.
