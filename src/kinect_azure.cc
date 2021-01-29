@@ -34,8 +34,10 @@ Napi::ThreadSafeFunction tsfn;
 std::mutex threadJoinedMutex;
 
 // thePLAN Debug References
-static Napi::Function d_callback;
-static Napi::FunctionReference d_callbackRef;
+std::string debugStr = "";
+Napi::ThreadSafeFunction dtsfn;
+std::thread debugNativeThread;
+bool is_debugging = true;
 
 bool is_listening = false;
 bool is_playbackFileOpen = false;
@@ -82,7 +84,7 @@ inline int convertToNumber(const char *key, Napi::Object js_config, int currentV
 
 void debugCallback(void *context, k4a_log_level_t level, const char *file, int line, const char *message)
 {
-    d_callbackRef.Call({Napi::String::New(d_callbackRef.Env(), "(" + std::string(file) + ") line - " + std::to_string(line) + ": " + std::string(message))});
+    debugStr = "(" + std::string(file) + ") line - " + std::to_string(line) + ": " + std::string(message));
 }
 
 void copyCustomConfig(Napi::Object js_config)
@@ -131,10 +133,65 @@ inline bool transform_joint_from_depth_3d_to_2d(
 Napi::Value MethodInit(const Napi::CallbackInfo &info)
 {
     Napi::Env env = info.Env();
-    d_callback = info[0].As<Napi::Function>();
-    d_callbackRef = Napi::Persistent(d_callback);
     k4a_result_t result = k4a_set_debug_message_handler(debugCallback, nullptr, K4A_LOG_LEVEL_ERROR);
     return Napi::Boolean::New(env, true);
+}
+
+Napi::Value MethodSetDebug(const Napi::CallbackInfo &info)
+{
+    if (info.Length() < 1)
+    {
+        throw TypeError::New(env, "Expected one arguments");
+    }
+    else if (!info[0].IsFunction())
+    {
+        throw TypeError::New(env, "Expected first arg to be function");
+    }
+
+    // Create a ThreadSafeFunction
+    dtsfn = ThreadSafeFunction::New(
+        env,
+        info[0].As<Function>(), // JavaScript function called asynchronously
+        "Debug Callback",       // Name
+        0,                      // Unlimited queue
+        1,                      // Only one thread will use this initially
+        [](Napi::Env) {         // Finalizer used to clean threads up
+            debugNativeThread.join();
+        });
+
+    // Create a native thread
+    debugNativeThread = std::thread([] {
+        auto callback = [](Napi::Env env, Function jsCallback, string value) {
+            // Transform native data into JS data, passing it to the provided
+            // `jsCallback` -- the TSFN's JavaScript function.
+            jsCallback.Call({Napi::String::New(env, value)});
+        };
+
+        while (is_debugging)
+        {
+            if (!debugStr.empty())
+            {
+                // Perform a blocking call
+                napi_status status = dtsfn.BlockingCall(debugStr, callback);
+                if (status != napi_ok)
+                {
+                    // Handle error
+                    break;
+                }
+
+                debugStr = ""; // Clear debug
+            }
+            else
+            {
+                continue;
+            }
+        }
+
+        // Release the thread-safe function
+        dtsfn.Release();
+    });
+
+    return Boolean::New(env, true);
 }
 
 Napi::Number MethodGetInstalledCount(const Napi::CallbackInfo &info)
@@ -1247,6 +1304,7 @@ Napi::Value MethodStopRecording(const Napi::CallbackInfo &info)
 Napi::Object Init(Napi::Env env, Napi::Object exports)
 {
     exports.Set(Napi::String::New(env, "init"), Napi::Function::New(env, MethodInit));
+    exports.Set(Napi::String::New(env, "startDebug"), Napi::Function::New(env, MethodSetDebug));
     exports.Set(Napi::String::New(env, "getInstalledCount"), Napi::Function::New(env, MethodGetInstalledCount));
     exports.Set(Napi::String::New(env, "openPlayback"), Napi::Function::New(env, MethodOpenPlayback));
     exports.Set(Napi::String::New(env, "startPlayback"), Napi::Function::New(env, MethodStartPlayback));
