@@ -174,7 +174,7 @@ Napi::Value MethodSetDebug(const Napi::CallbackInfo &info)
             if (!debugStr.empty())
             {
                 // Perform a blocking call
-                napi_status status = dtsfn.BlockingCall(&debugStr, callback);
+                napi_status status = dtsfn.BlockingCall(debugStr, callback);
                 if (status != napi_ok)
                 {
                     // Handle error
