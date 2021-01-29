@@ -82,7 +82,7 @@ inline int convertToNumber(const char *key, Napi::Object js_config, int currentV
 
 k4a_logging_message_cb_t debugCallback(void *context, k4a_log_level_t level, const char *file, int line, const char *message)
 {
-    g_callbackRef.Call({Napi::String::New(g_callbackRef.Env(), "(" + file + ") line - " + line + ": " + message)});
+    d_callbackRef.Call({Napi::String::New(d_callbackRef.Env(), "(" + file + ") line - " + line + ": " + message)});
 }
 
 void copyCustomConfig(Napi::Object js_config)
@@ -135,34 +135,6 @@ Napi::Value MethodInit(const Napi::CallbackInfo &info)
     d_callbackRef = Napi::Persistent(d_callback);
     k4a_result_t result = k4a_set_debug_message_handler(debugCallback, nullptr, k4a_log_level_t.K4A_LOG_LEVEL_TRACE);
     return Napi::Boolean::New(env, true);
-}
-
-Napi::Value MethodDebug(const Napi::CallbackInfo &info)
-{
-    Napi::Env env = info.Env();
-
-    debugTsfn = Napi::ThreadSafeFunction::New(
-        env,
-        info[0].As<Napi::Function>(), // JavaScript function called asynchronously
-        "Kinect Azure Debug",         // Name
-        1,                            // 1 call in queue
-        1,                            // Only one thread will use this initially
-        [](Napi::Env) {               // Finalizer used to clean threads up
-            debugNativeThread.join();
-        });
-
-    debugNativeThread = std::thread([count] {
-        auto callback = [](Napi::Env env, Function jsCallback, ) {
-            // Transform native data into JS data, passing it to the provided
-            // `jsCallback` -- the TSFN's JavaScript function.
-            jsCallback.Call({Number::New(env, *value)});
-        };
-
-        // Release the thread-safe function
-        debugTsfn.Release();
-    });
-
-    return Boolean::New(env, true);
 }
 
 Napi::Number MethodGetInstalledCount(const Napi::CallbackInfo &info)
@@ -1275,7 +1247,6 @@ Napi::Value MethodStopRecording(const Napi::CallbackInfo &info)
 Napi::Object Init(Napi::Env env, Napi::Object exports)
 {
     exports.Set(Napi::String::New(env, "init"), Napi::Function::New(env, MethodInit));
-    exports.Set(Napi::String::New(env, "debugCallback"), Napi::Function::New(env, MethodDebug));
     exports.Set(Napi::String::New(env, "getInstalledCount"), Napi::Function::New(env, MethodGetInstalledCount));
     exports.Set(Napi::String::New(env, "openPlayback"), Napi::Function::New(env, MethodOpenPlayback));
     exports.Set(Napi::String::New(env, "startPlayback"), Napi::Function::New(env, MethodStartPlayback));
