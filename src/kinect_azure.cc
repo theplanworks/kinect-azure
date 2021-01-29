@@ -34,7 +34,7 @@ Napi::ThreadSafeFunction tsfn;
 std::mutex threadJoinedMutex;
 
 // thePLAN Debug References
-std::string debugStr = "";
+std::string *debugStr = "";
 Napi::ThreadSafeFunction dtsfn;
 std::thread debugNativeThread;
 bool is_debugging = true;
