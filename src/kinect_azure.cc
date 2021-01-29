@@ -133,7 +133,7 @@ Napi::Value MethodInit(const Napi::CallbackInfo &info)
     Napi::Env env = info.Env();
     d_callback = info[0].As<Napi::Function>();
     d_callbackRef = Napi::Persistent(d_callback);
-    k4a_result_t result = k4a_set_debug_message_handler(debugCallback, nullptr, K4A_LOG_LEVEL_TRACE);
+    k4a_result_t result = k4a_set_debug_message_handler(debugCallback, nullptr, K4A_LOG_LEVEL_ERROR);
     return Napi::Boolean::New(env, true);
 }
 
