@@ -22,7 +22,7 @@ k4a_device_configuration_t g_deviceConfig = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
 CustomDeviceConfig g_customDeviceConfig;
 k4a_calibration_t g_calibration;
 k4a_transformation_t transformer = NULL;
-
+k4a_logging_message_cb_t debugCallback;
 #ifdef KINECT_AZURE_ENABLE_BODY_TRACKING
 k4abt_tracker_t g_tracker = NULL;
 #endif // KINECT_AZURE_ENABLE_BODY_TRACKING
@@ -80,7 +80,7 @@ inline int convertToNumber(const char *key, Napi::Object js_config, int currentV
     return currentValue;
 }
 
-k4a_logging_message_cb_t debugCallback(void *context, k4a_log_level_t level, const char *file, int line, const char *message)
+void debugCallback(void *context, k4a_log_level_t level, const char *file, int line, const char *message)
 {
     d_callbackRef.Call({Napi::String::New(d_callbackRef.Env(), "(" + file + ") line - " + line + ": " + message)});
 }
