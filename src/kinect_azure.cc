@@ -84,7 +84,7 @@ inline int convertToNumber(const char *key, Napi::Object js_config, int currentV
 
 void debugCallback(void *context, k4a_log_level_t level, const char *file, int line, const char *message)
 {
-    debugStr = "(" + std::string(file) + ") line - " + std::to_string(line) + ": " + std::string(message));
+    debugStr = "(" + std::string(file) + ") line - " + std::to_string(line) + ": " + std::string(message);
 }
 
 void copyCustomConfig(Napi::Object js_config)
