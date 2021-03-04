@@ -17,6 +17,10 @@
 #include "colorUtils.cc"
 #include <algorithm>
 
+// thePLAN
+bool is_recording = false;
+bool queue_recording_stop = false;
+
 k4a_device_t g_device = NULL;
 k4a_device_configuration_t g_deviceConfig = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
 CustomDeviceConfig g_customDeviceConfig;
@@ -39,12 +43,6 @@ bool is_playing = false;
 bool is_paused = false;
 bool is_seeking = false;
 double colorTimestamp = 0;
-
-// thePLAN
-bool is_recording = false;
-bool queue_recording_stop = false;
-const char *recording_filename;
-k4a_record_t recording;
 
 k4a_playback_t playback_handle = NULL;
 k4a_record_configuration_t playback_config;
@@ -85,11 +83,11 @@ void copyCustomConfig(Napi::Object js_config){
   g_customDeviceConfig.depth_to_redblue = convertToBool("depth_to_redblue", js_config,  g_customDeviceConfig.depth_to_redblue);
   g_customDeviceConfig.min_depth = convertToNumber("min_depth", js_config, g_customDeviceConfig.min_depth);
   g_customDeviceConfig.max_depth = convertToNumber("max_depth", js_config, g_customDeviceConfig.max_depth);
-  g_customDeviceConfig.include_depth_to_color = convertToBool("include_depth_to_color", js_config, g_customDeviceConfig.include_depth_to_color) 
+  g_customDeviceConfig.include_depth_to_color = convertToBool("include_depth_to_color", js_config, g_customDeviceConfig.include_depth_to_color)
     ||  g_customDeviceConfig.apply_depth_to_alpha == true
     ||  g_customDeviceConfig.depth_to_greyscale == true
     ||  g_customDeviceConfig.depth_to_redblue == true;
-  
+
 }
 
 inline int map (float value, int inputMin, int inputMax, int outputMin, int outputMax) {
@@ -100,18 +98,18 @@ inline int map (float value, int inputMin, int inputMax, int outputMin, int outp
 
 // Transform skeleton results from 3d depth space to 2d image space
 inline bool transform_joint_from_depth_3d_to_2d(
-    const k4a_calibration_t* calibration, 
-    k4a_float3_t joint_in_depth_space, 
+    const k4a_calibration_t* calibration,
+    k4a_float3_t joint_in_depth_space,
     k4a_float2_t& joint_in_color_2d,
     k4a_calibration_type_t target_space)
 {
   int valid;
   k4a_calibration_3d_to_2d(
-      calibration, 
-      &joint_in_depth_space, 
-      K4A_CALIBRATION_TYPE_DEPTH, 
-      target_space, 
-      &joint_in_color_2d, 
+      calibration,
+      &joint_in_depth_space,
+      K4A_CALIBRATION_TYPE_DEPTH,
+      target_space,
+      &joint_in_color_2d,
       &valid);
 
   return valid != 0;
@@ -144,7 +142,7 @@ Napi::Value MethodClose(const Napi::CallbackInfo& info) {
 }
 
 Napi::Value MethodOpenPlayback(const Napi::CallbackInfo& info) {
- 
+
   Napi::Env env = info.Env();
    if (is_playbackFileOpen){
     Napi::TypeError::New(env, "File already open")
@@ -157,7 +155,7 @@ Napi::Value MethodOpenPlayback(const Napi::CallbackInfo& info) {
     return env.Null();
   }
   Napi::String js_path = info[0].As<Napi::String>();
-  
+
   if (k4a_playback_open(js_path.Utf8Value().c_str(), &playback_handle) != K4A_RESULT_SUCCEEDED)
   {
       return Napi::Boolean::New(env, false);
@@ -169,13 +167,13 @@ Napi::Value MethodOpenPlayback(const Napi::CallbackInfo& info) {
   }
 
   g_playbackProps.recording_length = k4a_playback_get_recording_length_usec(playback_handle);
-  
+
   is_playbackFileOpen = true;
   return Napi::Boolean::New(env, true);
 }
 
 Napi::Value MethodStartPlayback(const Napi::CallbackInfo& info) {
-  
+
   Napi::Env env = info.Env();
    if (!is_playbackFileOpen){
     Napi::TypeError::New(env, "No playback file is open")
@@ -220,7 +218,7 @@ Napi::Value MethodStartPlayback(const Napi::CallbackInfo& info) {
   deviceConfig.depth_mode = (k4a_depth_mode_t) playback_config.depth_mode;
 
   copyCustomConfig(js_config);
-  
+
   g_deviceConfig = deviceConfig;
 
   k4a_playback_get_calibration(playback_handle, &g_calibration);
@@ -237,7 +235,7 @@ Napi::Value MethodStopPlayback(const Napi::CallbackInfo& info) {
 
 Napi::Value MethodSeek(const Napi::CallbackInfo& info) {
    Napi::Env env = info.Env();
-   
+
    if (!is_playbackFileOpen){
     Napi::TypeError::New(env, "No playback file is open")
         .ThrowAsJavaScriptException();
@@ -248,7 +246,7 @@ Napi::Value MethodSeek(const Napi::CallbackInfo& info) {
         .ThrowAsJavaScriptException();
     return env.Null();
   }
-  
+
   Napi::Value js_time =  info[0].As<Napi::Value>();
   if (js_time.IsNumber())
   {
@@ -290,7 +288,7 @@ Napi::Value MethodStartCameras(const Napi::CallbackInfo& info) {
   }
 
   k4a_device_configuration_t deviceConfig = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
-  
+
   Napi::Object js_config =  info[0].As<Napi::Object>();
   Napi::Value js_camera_fps = js_config.Get("camera_fps");
   if (js_camera_fps.IsNumber())
@@ -327,7 +325,7 @@ Napi::Value MethodStartCameras(const Napi::CallbackInfo& info) {
   copyCustomConfig(js_config);
 
   g_deviceConfig = deviceConfig;
-  
+
   k4a_device_start_cameras(g_device, &g_deviceConfig);
 
   if (g_customDeviceConfig.include_imu_sample)
@@ -375,7 +373,7 @@ Napi::Value MethodCreateTracker(const Napi::CallbackInfo& info) {
         tracker_config.gpu_device_id = (int32_t) js_gpu_device_id.As<Napi::Number>().Int32Value();
       }
   }
-  
+
   k4abt_tracker_create(&sensor_calibration, tracker_config, &g_tracker);
   return Napi::Boolean::New(env, true);
 }
@@ -459,14 +457,14 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
 
   threadJoinedMutex.lock();
   nativeThread = std::thread( [] {
-    
+
     auto callback = []( Napi::Env env, Napi::Function jsCallback, JSFrame* jsFrameRef ) {
-      if (!is_listening || (is_paused && !is_seeking)) {
+      if (!is_listening || (is_paused && !is_seeking) || is_recording) {
         // printf("[kinect_azure.cc] callback not listening\n");
         return;
       }
       // printf("[kinect_azure.cc] construct data\n");
-      // Transform native data into JS data, passing it to the provided 
+      // Transform native data into JS data, passing it to the provided
       // `jsCallback` -- the TSFN's JavaScript function.
       mtx.lock();
       JSFrame jsFrame = *jsFrameRef;
@@ -569,7 +567,7 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
               Napi::Array joints = Napi::Array::New(env, K4ABT_JOINT_COUNT);
               for (size_t j = 0; j < K4ABT_JOINT_COUNT; j++) {
                 Napi::Object joint = Napi::Object::New(env);
-                
+
                 joint.Set(Napi::String::New(env, "index"), Napi::Number::New(env, jsFrame.bodyFrame.bodies[i].skeleton.joints[j].index));
 
                 joint.Set(Napi::String::New(env, "cameraX"), Napi::Number::New(env, jsFrame.bodyFrame.bodies[i].skeleton.joints[j].cameraX));
@@ -580,13 +578,13 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
                 joint.Set(Napi::String::New(env, "orientationY"), Napi::Number::New(env, jsFrame.bodyFrame.bodies[i].skeleton.joints[j].orientationY));
                 joint.Set(Napi::String::New(env, "orientationZ"), Napi::Number::New(env, jsFrame.bodyFrame.bodies[i].skeleton.joints[j].orientationZ));
                 joint.Set(Napi::String::New(env, "orientationW"), Napi::Number::New(env, jsFrame.bodyFrame.bodies[i].skeleton.joints[j].orientationW));
-                
+
                 joint.Set(Napi::String::New(env, "colorX"), Napi::Number::New(env, jsFrame.bodyFrame.bodies[i].skeleton.joints[j].colorX));
                 joint.Set(Napi::String::New(env, "colorY"), Napi::Number::New(env, jsFrame.bodyFrame.bodies[i].skeleton.joints[j].colorY));
-                
+
                 joint.Set(Napi::String::New(env, "depthX"), Napi::Number::New(env, jsFrame.bodyFrame.bodies[i].skeleton.joints[j].depthX));
                 joint.Set(Napi::String::New(env, "depthY"), Napi::Number::New(env, jsFrame.bodyFrame.bodies[i].skeleton.joints[j].depthY));
-                
+
                 joint.Set(Napi::String::New(env, "confidence"), Napi::Number::New(env, jsFrame.bodyFrame.bodies[i].skeleton.joints[j].confidence));
 
                 joints.Set(Napi::Number::New(env, j), joint);
@@ -610,7 +608,7 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
 
     uint8_t* processed_color_data = NULL;
     uint8_t* processed_depth_data = NULL;
-    
+
     JSFrame jsFrame;
     while(is_listening)
     {
@@ -640,7 +638,7 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
           continue;
         }
       }
-      
+
       // Create new data
       mtx.lock();
       // printf("[kinect_azure.cc] jsFrame.reset\n");
@@ -710,7 +708,7 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
 
       if (g_customDeviceConfig.include_depth_to_color)
       {
-        
+
         if(
           k4a_image_create(
             K4A_IMAGE_FORMAT_DEPTH16,
@@ -720,15 +718,15 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
           ) == K4A_RESULT_SUCCEEDED )
         {
           jsFrame.depthToColorImageFrame.height = 10;
-      
+
           if(
             k4a_transformation_depth_image_to_color_camera(transformer, depth_image, depth_to_color_image) == K4A_RESULT_SUCCEEDED)
           {
             jsFrame.depthToColorImageFrame.width = 10;
-        
+
             jsFrame.depthToColorImageFrame.width = k4a_image_get_width_pixels(depth_to_color_image);
             jsFrame.depthToColorImageFrame.height = k4a_image_get_height_pixels(depth_to_color_image);
-            
+
             if (g_customDeviceConfig.depth_to_greyscale == true || g_customDeviceConfig.depth_to_redblue == true){
               jsFrame.depthToColorImageFrame.image_length = k4a_image_get_size(color_image);
               jsFrame.depthToColorImageFrame.stride_bytes = k4a_image_get_stride_bytes(color_image);
@@ -788,7 +786,7 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
           if (g_customDeviceConfig.apply_depth_to_alpha == true){
             depthPixelIndex = 0;
             depth_to_color_data = k4a_image_get_buffer(depth_to_color_image);
-            
+
             for( int i = 0; i < jsFrame.colorImageFrame.image_length; i+=4 ) {
               combined = (depth_to_color_data[depthPixelIndex+1] << 8) | (depth_to_color_data[depthPixelIndex] & 0xff);
               normalizedValue = map(combined, g_customDeviceConfig.min_depth, g_customDeviceConfig.max_depth, 255, 0);
@@ -796,13 +794,13 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
               processed_color_data[i+3] = normalizedValue;
               depthPixelIndex += 2;
             }
-          } 
+          }
           memcpy(jsFrame.colorImageFrame.image_data, processed_color_data, jsFrame.colorImageFrame.image_length);
         } else {
           memcpy(jsFrame.colorImageFrame.image_data, image_data, jsFrame.colorImageFrame.image_length);
         }
       }
-      
+
       if (depth_to_color_image != NULL)
       {
         uint8_t* image_data = k4a_image_get_buffer(depth_to_color_image);
@@ -813,7 +811,7 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
 
           depthPixelIndex = 0;
           if (g_customDeviceConfig.depth_to_greyscale == true){
-            
+
             for( int i = 0; i < jsFrame.depthToColorImageFrame.image_length; i+=4 ) {
               combined = (image_data[depthPixelIndex+1] << 8) | (image_data[depthPixelIndex] & 0xff);
               normalizedValue = map(combined, g_customDeviceConfig.min_depth, g_customDeviceConfig.max_depth, 255, 0);
@@ -824,7 +822,7 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
               processed_depth_data[i+3] = 0xFF;
               depthPixelIndex += 2;
             }
-            
+
           } else if (g_customDeviceConfig.depth_to_redblue == true){
             for( int i = 0; i < jsFrame.depthToColorImageFrame.image_length; i+=4 ) {
               combined = std::min(g_customDeviceConfig.max_depth, std::max(g_customDeviceConfig.min_depth, image_data[depthPixelIndex+1] << 8 | image_data[depthPixelIndex]));
@@ -918,7 +916,7 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
           for (size_t i = 0; i < num_bodies; i++)
           {
             jsFrame.bodyFrame.bodies[i].id = k4abt_frame_get_body_id(body_frame, i);
-            
+
             k4abt_skeleton_t skeleton;
             k4abt_frame_get_body_skeleton(body_frame, i, &skeleton);
 
@@ -939,7 +937,7 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
               k4a_float2_t point2d;
               bool valid;
               valid = transform_joint_from_depth_3d_to_2d(
-                            &g_calibration, 
+                            &g_calibration,
                             skeleton.joints[j].position,
                             point2d,
                             K4A_CALIBRATION_TYPE_DEPTH);
@@ -952,7 +950,7 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
 
               if (g_deviceConfig.color_resolution != K4A_COLOR_RESOLUTION_OFF) {
                 valid = transform_joint_from_depth_3d_to_2d(
-                            &g_calibration, 
+                            &g_calibration,
                             skeleton.joints[j].position,
                             point2d,
                             K4A_CALIBRATION_TYPE_COLOR);
@@ -1014,28 +1012,8 @@ Napi::Value MethodStartListening(const Napi::CallbackInfo& info) {
         depth_to_color_image = NULL;
       }
 
-      // thePLAN
-      // End recording
-      if (queue_recording_stop)
-      {
-        is_recording = false;
-        queue_recording_stop = false;
-        k4a_record_flush(recording);
-        k4a_record_close(recording);
-        recording = NULL;
-      }
-      else if (is_recording) {
-        if (recording == NULL) {
-          k4a_record_create(recording_filename, g_device, g_deviceConfig, &recording);
-          if (g_customDeviceConfig.include_imu_sample) {
-            k4a_record_add_imu_track(recording);
-          }
-          k4a_record_write_header(recording);
-        }
-        k4a_record_write_capture(recording, sensor_capture);
-      }
       k4a_capture_release(sensor_capture);
-     
+
       if (!is_listening)
       {
         mtx.unlock();
@@ -1116,14 +1094,63 @@ Napi::Value MethodStopListening(const Napi::CallbackInfo& info) {
   return info.Env().Undefined();
 }
 
-// thePLAN
+
 Napi::Value MethodStartRecording(const Napi::CallbackInfo& info) {
+  if (is_recording || queue_recording_stop) {
+    return Napi::Boolean::New(env, false);
+  }
   // Set recording to true
-  Napi::Env env = info.Env();
-  Napi::String js_path = info[0].As<Napi::String>();
-  recording_filename = js_path.Utf8Value().c_str();
   is_recording = true;
   queue_recording_stop = false;
+
+  Napi::Env env = info.Env();
+  Napi::String js_path = info[0].As<Napi::String>();
+  const char *recording_filename = js_path.Utf8Value().c_str();
+
+  k4a_record_t recording;
+  if (k4a_record_create(recording_filename, g_device, g_deviceConfig, &recording) === K4A_FAILED) {
+    Napi::TypeError::New(env, "Kinect recording could not be created").ThrowAsJavaScriptException();
+    return Napi::Boolean::New(env, false);
+  }
+
+  k4a_record_write_header(recording);
+
+  k4a_capture_t capture;
+  k4a_wait_result_t result = K4A_WAIT_RESULT_TIMEOUT;
+/*
+  // Wait for the first capture before starting recording. //TODO IF WE HAVE TO IMPLEMENT THIS, NEED TO SWAP OUT CLOCK
+  int32_t timeout_sec_for_first_capture = 60;
+  clock_t first_capture_start = clock();
+  // Wait for the first capture in a loop so Ctrl-C will still exit.
+  while (!exiting && (clock() - first_capture_start) < (CLOCKS_PER_SEC * timeout_sec_for_first_capture)) {
+      result = k4a_device_get_capture(device, &capture, 100);
+      if (result == K4A_WAIT_RESULT_SUCCEEDED) {
+          k4a_capture_release(capture);
+          break;
+      } else if (result == K4A_WAIT_RESULT_FAILED) {
+          Napi::TypeError::New(env, "Runtime error: k4a_device_get_capture() returned error: " + result).ThrowAsJavaScriptException();
+          return;
+      }
+  }
+  clock_t recording_start = clock();
+  int32_t timeout_ms = 1000 / camera_fps;
+*/
+  do {
+    result = k4a_device_get_capture(g_device, &capture, 0);
+    if (result != K4A_WAIT_RESULT_SUCCEEDED) {
+      Napi::TypeError::New(env, "Runtime error: k4a_device_get_capture() returned").ThrowAsJavaScriptException();
+      break;
+    }
+    k4a_record_write_capture(recording, capture);
+    k4a_capture_release(capture);
+  } while (is_recording && !queue_recording_stop);
+
+  k4a_record_flush(recording);
+  k4a_record_close(recording);
+  recording = NULL;
+  is_recording = false;
+  queue_recording_stop = false;
+
   // Napi::TypeError::New(env, "********* RECORDING!!!")
         // .ThrowAsJavaScriptException();
   return Napi::Boolean::New(env, true);
